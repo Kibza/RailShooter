@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>StarFox 64 Rail Shooter - Final</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>StarFox 64 Rail Shooter - Mobile Ready</title>
   <style>
     body {
       margin: 0;
@@ -13,6 +13,8 @@
       user-select: none;
       cursor: crosshair;
       touch-action: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
     }
 
     canvas { display: block; }
@@ -35,7 +37,7 @@
     }
 
     #menuOverlay h1 {
-      font-size: 4em;
+      font-size: 3em;
       margin: 0;
       color: #4af;
       text-shadow: 0 0 20px #4af;
@@ -43,7 +45,7 @@
 
     #menuOverlay .instructions {
       margin-top: 20px;
-      font-size: 1.2em;
+      font-size: 1em;
       text-align: center;
       line-height: 1.6;
     }
@@ -136,6 +138,80 @@
       opacity: 0;
       transition: opacity 0.3s;
     }
+
+    /* ---------- CONTROLES TÁCTILES (MÓVIL) ---------- */
+    #touchControls {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      width: 100%;
+      height: 200px;
+      z-index: 80;
+      pointer-events: none; /* los hijos tendrán pointer-events auto */
+      display: none; /* se mostrará solo en dispositivos táctiles */
+    }
+
+    #joystickArea {
+      position: absolute;
+      left: 20px;
+      bottom: 20px;
+      width: 120px;
+      height: 120px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    #joystickKnob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .touchBtn {
+      position: absolute;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      color: white;
+      font-size: 1.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #fireButton {
+      right: 20px;
+      bottom: 20px;
+      background: rgba(255, 100, 100, 0.4);
+      font-size: 2em;
+    }
+
+    #brakeButton {
+      right: 100px;
+      bottom: 20px;
+      background: rgba(100, 100, 255, 0.4);
+      font-size: 1.5em;
+    }
+
+    #turboButton {
+      right: 20px;
+      bottom: 100px;
+      background: rgba(255, 200, 0, 0.4);
+      font-size: 1.5em;
+    }
   </style>
 </head>
 <body>
@@ -146,11 +222,9 @@
     <div class="instructions">
       <p><strong>Controles:</strong></p>
       <p>Mouse: apuntar y disparar (clic izquierdo)</p>
-      <p>Espacio: frenar</p>
+      <p>Espacio: frenar | V: turbo</p>
       <p>Flechas / WASD: mover nave</p>
-      <p>V: turbo</p>
-      <p>Y: cambiar cámara</p>
-      <p>F: pantalla completa</p>
+      <p>Y: cambiar cámara | F: pantalla completa</p>
       <p>Enter: iniciar</p>
     </div>
     <button class="start-btn" id="startButton">INICIAR</button>
@@ -170,6 +244,16 @@
   <!-- Etiqueta modo cámara -->
   <div id="cameraModeLabel"></div>
 
+  <!-- Controles táctiles (móvil) -->
+  <div id="touchControls">
+    <div id="joystickArea">
+      <div id="joystickKnob"></div>
+    </div>
+    <div id="fireButton" class="touchBtn">🔫</div>
+    <div id="brakeButton" class="touchBtn">🛑</div>
+    <div id="turboButton" class="touchBtn">⚡</div>
+  </div>
+
   <script type="importmap">
     {
       "imports": {
@@ -185,7 +269,6 @@
     //  CONFIGURACIÓN GENERAL
     // ============================================================
     const CONFIG = {
-      // Riel
       baseRailSpeed: 10,
       turboMultiplier: 2.5,
       brakeMultiplier: 0.4,
@@ -195,41 +278,33 @@
       energyRegeneration: 15,
       energyStunTime: 3.0,
 
-      // Cámara
       cameraFov: 75,
       cameraNear: 0.1,
       cameraFar: 1000,
 
-      // Nave jugador
       playerMoveSpeed: 12,
       maxLateralOffset: 6,
       maxVerticalOffset: 4,
       forwardDistance: 8,
 
-      // Disparo (láser)
       bulletSpeed: 80,
       bulletLength: 2.0,
       bulletThickness: 0.1,
       shootCooldownTime: 0.2,
       bulletMaxDistance: 200,
 
-      // Enemigos
       enemyHitRadius: 1.2,
       playerHitRadius: 1.5,
       enemySpawnDistanceAhead: 15,
 
-      // Explosión
       explosionDuration: 2.0,
 
-      // Camino
       useSmoothPath: true,
       curveTension: 0.5,
 
-      // Cámara cockpit
       cockpitCameraOffsetUp: 0.5,
       cockpitCameraOffsetForward: 1.0,
 
-      // Suelo
       groundCollisionY: -10.5,
     };
 
@@ -256,6 +331,7 @@
     );
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    // Reducir pixel ratio en móviles para rendimiento
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.body.appendChild(renderer.domElement);
 
@@ -279,9 +355,7 @@
     gridHelper.position.y = 0.01;
     scene.add(gridHelper);
 
-    // ============================================================
-    //  ESTRELLAS DE FONDO
-    // ============================================================
+    // Estrellas
     const starsGeo = new THREE.BufferGeometry();
     const starsCount = 2000;
     const starsPositions = new Float32Array(starsCount * 3);
@@ -349,9 +423,15 @@
     let mouseX = 0;
     let mouseY = 0;
     let mouseDownLeft = false;
+    let isTouchDevice = false;
+
+    // Detectar si es dispositivo táctil
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+      isTouchDevice = true;
+      document.getElementById('touchControls').style.display = 'block';
+    }
 
     window.addEventListener('keydown', (e) => {
-      // Prevenir atajos del navegador para teclas del juego
       const preventKeys = [' ', 'v', 'V', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'a', 's', 'd', 'w', 'y', 'Y', 'f', 'F'];
       if (preventKeys.includes(e.key)) {
         e.preventDefault();
@@ -365,7 +445,9 @@
 
     const reticle = document.getElementById('reticle');
 
+    // Mouse (escritorio)
     window.addEventListener('mousemove', (e) => {
+      if (isTouchDevice) return;
       mouseX = (e.clientX / window.innerWidth) * 2 - 1;
       mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
       reticle.style.left = e.clientX + 'px';
@@ -374,7 +456,6 @@
 
     window.addEventListener('mousedown', (e) => {
       if (e.button === 0) mouseDownLeft = true;
-      // click derecho no hace nada (solo se previene el menú contextual)
     });
 
     window.addEventListener('mouseup', (e) => {
@@ -383,30 +464,106 @@
 
     window.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Soporte táctil (Android / iOS)
-    window.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
-      mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
-      reticle.style.left = touch.clientX + 'px';
-      reticle.style.top = touch.clientY + 'px';
-      mouseDownLeft = true;
-    }, { passive: false });
+    // ============================================================
+    //  CONTROLES TÁCTILES (MÓVIL)
+    // ============================================================
+    if (isTouchDevice) {
+      // Joystick
+      const joystickArea = document.getElementById('joystickArea');
+      const joystickKnob = document.getElementById('joystickKnob');
+      let joystickActive = false;
+      let joystickCenterX = 0, joystickCenterY = 0;
+      let joystickRadius = 40; // radio máximo de desplazamiento del knob
 
-    window.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
-      mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
-      reticle.style.left = touch.clientX + 'px';
-      reticle.style.top = touch.clientY + 'px';
-    }, { passive: false });
+      joystickArea.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        joystickActive = true;
+        const rect = joystickArea.getBoundingClientRect();
+        joystickCenterX = rect.left + rect.width / 2;
+        joystickCenterY = rect.top + rect.height / 2;
+        updateJoystick(e.touches[0]);
+      });
 
-    window.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      mouseDownLeft = false;
-    }, { passive: false });
+      joystickArea.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (joystickActive) updateJoystick(e.touches[0]);
+      });
+
+      joystickArea.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        joystickActive = false;
+        // Resetear knob
+        joystickKnob.style.transform = 'translate(-50%, -50%)';
+        // Resetear movimiento
+        touchMoveX = 0;
+        touchMoveY = 0;
+      });
+
+      function updateJoystick(touch) {
+        let dx = touch.clientX - joystickCenterX;
+        let dy = touch.clientY - joystickCenterY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > joystickRadius) {
+          dx = dx / dist * joystickRadius;
+          dy = dy / dist * joystickRadius;
+        }
+        joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        // Normalizar a -1..1
+        touchMoveX = dx / joystickRadius;
+        touchMoveY = dy / joystickRadius;
+      }
+
+      // Zona de apuntado/disparo (lado derecho)
+      const fireButton = document.getElementById('fireButton');
+      fireButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        mouseDownLeft = true;
+        // Opcional: también usar la posición del touch para apuntar
+        const touch = e.touches[0];
+        mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+        reticle.style.left = touch.clientX + 'px';
+        reticle.style.top = touch.clientY + 'px';
+      });
+      fireButton.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+        reticle.style.left = touch.clientX + 'px';
+        reticle.style.top = touch.clientY + 'px';
+      });
+      fireButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        mouseDownLeft = false;
+      });
+
+      // Botón de freno
+      const brakeButton = document.getElementById('brakeButton');
+      brakeButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys[' '] = true; // asumimos freno con espacio
+      });
+      brakeButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys[' '] = false;
+      });
+
+      // Botón de turbo
+      const turboButton = document.getElementById('turboButton');
+      turboButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys['v'] = true;
+      });
+      turboButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys['v'] = false;
+      });
+
+      // Inicializar variables de movimiento táctil
+      window.touchMoveX = 0;
+      window.touchMoveY = 0;
+    }
 
     // ============================================================
     //  RAYCASTER PARA APUNTAR
@@ -574,6 +731,9 @@
 
       document.getElementById('menuOverlay').style.display = 'none';
       reticle.style.display = 'block';
+      if (isTouchDevice) {
+        document.getElementById('touchControls').style.display = 'block';
+      }
     }
 
     function resetToMenu() {
@@ -582,6 +742,9 @@
       clearExplosion();
       document.getElementById('menuOverlay').style.display = 'flex';
       reticle.style.display = 'none';
+      if (isTouchDevice) {
+        document.getElementById('touchControls').style.display = 'none';
+      }
     }
 
     // ============================================================
@@ -625,6 +788,9 @@
       gameState = 'exploding';
       explosionTime = 0;
       reticle.style.display = 'none';
+      if (isTouchDevice) {
+        document.getElementById('touchControls').style.display = 'none';
+      }
     }
 
     // ============================================================
@@ -658,7 +824,7 @@
       }
 
       // ========== ESTADO: PLAYING ==========
-      // Turbo con V, freno con Espacio
+      // Turbo y freno
       const usingTurbo = (keys['v'] || keys['V']) && boostEnergy > 0 && energyStunTimer <= 0;
       const braking = keys[' '] && boostEnergy > 0 && energyStunTimer <= 0;
 
@@ -689,11 +855,18 @@
       const right = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
       const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
 
+      // Movimiento: teclado o joystick táctil
       let dx = 0, dy = 0;
-      if (keys['ArrowLeft'] || keys['a']) dx -= 1;
-      if (keys['ArrowRight'] || keys['d']) dx += 1;
-      if (keys['ArrowUp'] || keys['w']) dy += 1;
-      if (keys['ArrowDown'] || keys['s']) dy -= 1;
+      if (!isTouchDevice) {
+        if (keys['ArrowLeft'] || keys['a']) dx -= 1;
+        if (keys['ArrowRight'] || keys['d']) dx += 1;
+        if (keys['ArrowUp'] || keys['w']) dy += 1;
+        if (keys['ArrowDown'] || keys['s']) dy -= 1;
+      } else {
+        // Usar joystick táctil
+        dx = window.touchMoveX || 0;
+        dy = window.touchMoveY || 0;
+      }
 
       offsetX += dx * CONFIG.playerMoveSpeed * delta;
       offsetY += dy * CONFIG.playerMoveSpeed * delta;
