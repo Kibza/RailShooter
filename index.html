@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>StarFox 64 Rail Shooter - Final</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Arial', sans-serif;
+      user-select: none;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    canvas { display: block; }
+
+    /* ---------- MENÚ DE INICIO ---------- */
+    #menuOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      z-index: 100;
+      pointer-events: auto;
+    }
+
+    #menuOverlay h1 {
+      font-size: 4em;
+      margin: 0;
+      color: #4af;
+      text-shadow: 0 0 20px #4af;
+    }
+
+    #menuOverlay .instructions {
+      margin-top: 20px;
+      font-size: 1.2em;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    #menuOverlay .start-btn {
+      margin-top: 30px;
+      padding: 15px 40px;
+      font-size: 1.5em;
+      background: #4af;
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    #menuOverlay .start-btn:hover { background: #7cf; }
+
+    /* ---------- HUD ---------- */
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      z-index: 50;
+      pointer-events: none;
+      text-shadow: 0 0 5px black;
+    }
+
+    #boostBarContainer {
+      width: 200px;
+      height: 20px;
+      background: #333;
+      border: 1px solid #aaa;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    #boostBar {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(to right, #f80, #ff0);
+      border-radius: 10px;
+      transition: width 0.1s;
+    }
+
+    #speedIndicator {
+      margin-top: 5px;
+      font-size: 1.2em;
+    }
+
+    /* ---------- RETÍCULA ---------- */
+    #reticle {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border: 2px solid #4af;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 0 10px #4af;
+    }
+
+    #reticle::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 5px;
+      height: 5px;
+      background: #ff0;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* ---------- MENSAJE DE CAMBIO DE CÁMARA ---------- */
+    #cameraModeLabel {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 1.5em;
+      z-index: 50;
+      pointer-events: none;
+      text-shadow: 0 0 10px black;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Menú de inicio -->
+  <div id="menuOverlay">
+    <h1>STAR RAIL</h1>
+    <div class="instructions">
+      <p><strong>Controles:</strong></p>
+      <p>Mouse: apuntar y disparar (clic izquierdo)</p>
+      <p>Espacio: frenar</p>
+      <p>Flechas / WASD: mover nave</p>
+      <p>V: turbo</p>
+      <p>Y: cambiar cámara</p>
+      <p>F: pantalla completa</p>
+      <p>Enter: iniciar</p>
+    </div>
+    <button class="start-btn" id="startButton">INICIAR</button>
+    <p style="margin-top:20px; font-size:0.9em;">Presiona Enter para comenzar</p>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div>ENERGÍA</div>
+    <div id="boostBarContainer"><div id="boostBar"></div></div>
+    <div id="speedIndicator">Velocidad: 0</div>
+  </div>
+
+  <!-- Retícula -->
+  <div id="reticle"></div>
+
+  <!-- Etiqueta modo cámara -->
+  <div id="cameraModeLabel"></div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ============================================================
+    //  CONFIGURACIÓN GENERAL
+    // ============================================================
+    const CONFIG = {
+      // Riel
+      baseRailSpeed: 10,
+      turboMultiplier: 2.5,
+      brakeMultiplier: 0.4,
+      boostMax: 100,
+      turboEnergyConsumption: 25,
+      brakeEnergyConsumption: 15,
+      energyRegeneration: 15,
+      energyStunTime: 3.0,
+
+      // Cámara
+      cameraFov: 75,
+      cameraNear: 0.1,
+      cameraFar: 1000,
+
+      // Nave jugador
+      playerMoveSpeed: 12,
+      maxLateralOffset: 6,
+      maxVerticalOffset: 4,
+      forwardDistance: 8,
+
+      // Disparo (láser)
+      bulletSpeed: 80,
+      bulletLength: 2.0,
+      bulletThickness: 0.1,
+      shootCooldownTime: 0.2,
+      bulletMaxDistance: 200,
+
+      // Enemigos
+      enemyHitRadius: 1.2,
+      playerHitRadius: 1.5,
+      enemySpawnDistanceAhead: 15,
+
+      // Explosión
+      explosionDuration: 2.0,
+
+      // Camino
+      useSmoothPath: true,
+      curveTension: 0.5,
+
+      // Cámara cockpit
+      cockpitCameraOffsetUp: 0.5,
+      cockpitCameraOffsetForward: 1.0,
+
+      // Suelo
+      groundCollisionY: -10.5,
+    };
+
+    // ============================================================
+    //  ESTADO DEL JUEGO
+    // ============================================================
+    let gameState = 'menu';
+    let explosionTime = 0;
+    let cameraMode = 'third';
+    let currentRailSpeed = CONFIG.baseRailSpeed;
+    let boostEnergy = CONFIG.boostMax;
+    let energyStunTimer = 0;
+
+    // ============================================================
+    //  ESCENA, CÁMARA Y RENDERER
+    // ============================================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000011);
+    const camera = new THREE.PerspectiveCamera(
+      CONFIG.cameraFov,
+      window.innerWidth / window.innerHeight,
+      CONFIG.cameraNear,
+      CONFIG.cameraFar
+    );
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Luces
+    scene.add(new THREE.AmbientLight(0x404040));
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 5);
+    scene.add(directionalLight);
+
+    // ============================================================
+    //  SUELO
+    // ============================================================
+    const groundGeo = new THREE.PlaneGeometry(500, 500);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2b3c, side: THREE.DoubleSide });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -10;
+    scene.add(ground);
+
+    const gridHelper = new THREE.GridHelper(500, 50, 0x4af, 0x224466);
+    gridHelper.position.y = 0.01;
+    scene.add(gridHelper);
+
+    // ============================================================
+    //  ESTRELLAS DE FONDO
+    // ============================================================
+    const starsGeo = new THREE.BufferGeometry();
+    const starsCount = 2000;
+    const starsPositions = new Float32Array(starsCount * 3);
+    for (let i = 0; i < starsCount * 3; i++) {
+      starsPositions[i] = (Math.random() - 0.5) * 400;
+    }
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPositions, 3));
+    const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.3 }));
+    scene.add(stars);
+
+    // ============================================================
+    //  CAMINO (RIEL)
+    // ============================================================
+    const tightPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(20, 5, -30),
+      new THREE.Vector3(-10, 8, -60),
+      new THREE.Vector3(30, 2, -100),
+      new THREE.Vector3(0, 10, -150)
+    ];
+
+    const smoothPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(5, 0, -10),
+      new THREE.Vector3(15, 1, -25),
+      new THREE.Vector3(20, 3, -40),
+      new THREE.Vector3(15, 5, -55),
+      new THREE.Vector3(5, 7, -70),
+      new THREE.Vector3(-5, 8, -85),
+      new THREE.Vector3(-10, 9, -100),
+      new THREE.Vector3(-5, 10, -115),
+      new THREE.Vector3(5, 10, -130),
+      new THREE.Vector3(10, 8, -145)
+    ];
+
+    const selectedPoints = CONFIG.useSmoothPath ? smoothPoints : tightPoints;
+    const curve = new THREE.CatmullRomCurve3(selectedPoints, false, 'catmullrom', CONFIG.curveTension);
+    const curveLength = curve.getLength();
+
+    // ============================================================
+    //  NAVE DEL JUGADOR
+    // ============================================================
+    const player = new THREE.Group();
+    const bodyGeo = new THREE.ConeGeometry(0.4, 1.8, 8);
+    bodyGeo.rotateX(Math.PI / 2);
+    player.add(new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x3366ff })));
+
+    const wingGeo = new THREE.BoxGeometry(1.5, 0.2, 0.8);
+    const wingMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+    const leftWing = new THREE.Mesh(wingGeo, wingMat);
+    leftWing.position.set(-0.9, 0, 0);
+    player.add(leftWing);
+    const rightWing = new THREE.Mesh(wingGeo, wingMat);
+    rightWing.position.set(0.9, 0, 0);
+    player.add(rightWing);
+    scene.add(player);
+
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // ============================================================
+    //  ENTRADA DE TECLADO Y MOUSE
+    // ============================================================
+    const keys = {};
+    let mouseX = 0;
+    let mouseY = 0;
+    let mouseDownLeft = false;
+
+    window.addEventListener('keydown', (e) => {
+      // Prevenir atajos del navegador para teclas del juego
+      const preventKeys = [' ', 'v', 'V', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'a', 's', 'd', 'w', 'y', 'Y', 'f', 'F'];
+      if (preventKeys.includes(e.key)) {
+        e.preventDefault();
+      }
+      keys[e.key] = true;
+      if (e.key === 'Enter' && gameState === 'menu') startGame();
+      if (e.key === 'y' || e.key === 'Y') toggleCameraMode();
+      if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+    });
+    window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+    const reticle = document.getElementById('reticle');
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+      reticle.style.left = e.clientX + 'px';
+      reticle.style.top = e.clientY + 'px';
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) mouseDownLeft = true;
+      // click derecho no hace nada (solo se previene el menú contextual)
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) mouseDownLeft = false;
+    });
+
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Soporte táctil (Android / iOS)
+    window.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+      mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+      reticle.style.left = touch.clientX + 'px';
+      reticle.style.top = touch.clientY + 'px';
+      mouseDownLeft = true;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+      mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+      reticle.style.left = touch.clientX + 'px';
+      reticle.style.top = touch.clientY + 'px';
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      mouseDownLeft = false;
+    }, { passive: false });
+
+    // ============================================================
+    //  RAYCASTER PARA APUNTAR
+    // ============================================================
+    const raycaster = new THREE.Raycaster();
+    let currentTangent = new THREE.Vector3(0, 0, -1);
+
+    // ============================================================
+    //  PROYECTILES (LÁSER)
+    // ============================================================
+    const bullets = [];
+    let shootCooldown = 0;
+
+    function spawnBullet(direction) {
+      const bulletGeo = new THREE.CylinderGeometry(
+        CONFIG.bulletThickness / 2,
+        CONFIG.bulletThickness / 2,
+        CONFIG.bulletLength,
+        8
+      );
+      bulletGeo.rotateX(Math.PI / 2);
+      const bulletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+      const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+
+      const startPos = player.position.clone().addScaledVector(currentTangent, 2.0);
+      bullet.position.copy(startPos);
+      bullet.lookAt(startPos.clone().add(direction));
+      scene.add(bullet);
+      bullets.push({
+        mesh: bullet,
+        velocity: direction.normalize().multiplyScalar(CONFIG.bulletSpeed)
+      });
+    }
+
+    // ============================================================
+    //  ENEMIGOS
+    // ============================================================
+    const enemies = [];
+    const enemySpawns = [
+      { u: 0.05, x: -2, y: 0 },
+      { u: 0.08, x: 2, y: 1 },
+      { u: 0.12, x: 0, y: -2 },
+      { u: 0.18, x: -3, y: 1 },
+      { u: 0.25, x: 3, y: -1 },
+      { u: 0.30, x: 0, y: 2 },
+      { u: 0.40, x: -2, y: -1 },
+      { u: 0.50, x: 2, y: 0 },
+      { u: 0.60, x: 0, y: -2 },
+      { u: 0.70, x: -3, y: 0 },
+      { u: 0.80, x: 3, y: 1 },
+      { u: 0.90, x: 0, y: -3 }
+    ];
+
+    function spawnEnemies() {
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      enemySpawns.forEach((spawn) => {
+        const pos = curve.getPointAt(spawn.u);
+        const tangent = curve.getTangentAt(spawn.u);
+        const right = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
+        const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
+
+        const enemy = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.8),
+          new THREE.MeshStandardMaterial({ color: 0xff3333 })
+        );
+        enemy.position.copy(pos)
+          .addScaledVector(right, spawn.x)
+          .addScaledVector(up, spawn.y)
+          .addScaledVector(tangent, CONFIG.enemySpawnDistanceAhead);
+        enemy.userData = { hp: 1 };
+        scene.add(enemy);
+        enemies.push(enemy);
+      });
+    }
+    spawnEnemies();
+
+    // ============================================================
+    //  SISTEMA DE EXPLOSIÓN
+    // ============================================================
+    const explosionParticles = [];
+
+    function createExplosion(position) {
+      const particleCount = 60;
+      for (let i = 0; i < particleCount; i++) {
+        const size = Math.random() * 0.3 + 0.1;
+        const particle = new THREE.Mesh(
+          new THREE.SphereGeometry(size, 4, 4),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.05 + Math.random() * 0.1, 1, 0.5) })
+        );
+        particle.position.copy(position);
+        const dir = new THREE.Vector3(
+          Math.random() - 0.5,
+          Math.random() - 0.5,
+          Math.random() - 0.5
+        ).normalize();
+        const speed = Math.random() * 15 + 5;
+        particle.userData = {
+          velocity: dir.multiplyScalar(speed),
+          life: 1.0,
+          decay: Math.random() * 0.5 + 0.3
+        };
+        explosionParticles.push(particle);
+        scene.add(particle);
+      }
+    }
+
+    function updateExplosion(delta) {
+      for (let i = explosionParticles.length - 1; i >= 0; i--) {
+        const p = explosionParticles[i];
+        p.userData.life -= p.userData.decay * delta;
+        if (p.userData.life <= 0) {
+          scene.remove(p);
+          explosionParticles.splice(i, 1);
+          continue;
+        }
+        p.position.addScaledVector(p.userData.velocity, delta);
+        p.scale.setScalar(p.userData.life);
+      }
+    }
+
+    function clearExplosion() {
+      explosionParticles.forEach(p => scene.remove(p));
+      explosionParticles.length = 0;
+    }
+
+    // ============================================================
+    //  FUNCIONES AUXILIARES
+    // ============================================================
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.log(err));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    function toggleCameraMode() {
+      cameraMode = (cameraMode === 'third') ? 'first' : 'third';
+      const label = document.getElementById('cameraModeLabel');
+      label.textContent = cameraMode === 'third' ? 'Vista exterior' : 'Vista de cabina';
+      label.style.opacity = 1;
+      setTimeout(() => { label.style.opacity = 0; }, 1500);
+    }
+
+    function startGame() {
+      gameState = 'playing';
+      explosionTime = 0;
+      currentRailSpeed = CONFIG.baseRailSpeed;
+      boostEnergy = CONFIG.boostMax;
+      energyStunTimer = 0;
+      offsetX = 0;
+      offsetY = 0;
+      u = 0;
+
+      enemies.forEach(e => scene.remove(e));
+      enemies.length = 0;
+      bullets.forEach(b => scene.remove(b.mesh));
+      bullets.length = 0;
+      clearExplosion();
+
+      spawnEnemies();
+
+      player.visible = true;
+      player.position.set(0, 0, 0);
+
+      document.getElementById('menuOverlay').style.display = 'none';
+      reticle.style.display = 'block';
+    }
+
+    function resetToMenu() {
+      gameState = 'menu';
+      player.visible = true;
+      clearExplosion();
+      document.getElementById('menuOverlay').style.display = 'flex';
+      reticle.style.display = 'none';
+    }
+
+    // ============================================================
+    //  COLISIONES
+    // ============================================================
+    function checkCollisions() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const enemy = enemies[j];
+          if (bullet.mesh.position.distanceTo(enemy.position) < CONFIG.enemyHitRadius) {
+            scene.remove(enemy);
+            enemies.splice(j, 1);
+            scene.remove(bullet.mesh);
+            bullets.splice(i, 1);
+            break;
+          }
+        }
+      }
+
+      if (gameState === 'playing') {
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const enemy = enemies[j];
+          if (player.position.distanceTo(enemy.position) < CONFIG.playerHitRadius) {
+            triggerExplosion();
+            scene.remove(enemy);
+            enemies.splice(j, 1);
+            break;
+          }
+        }
+
+        if (player.position.y < CONFIG.groundCollisionY) {
+          triggerExplosion();
+        }
+      }
+    }
+
+    function triggerExplosion() {
+      createExplosion(player.position);
+      player.visible = false;
+      gameState = 'exploding';
+      explosionTime = 0;
+      reticle.style.display = 'none';
+    }
+
+    // ============================================================
+    //  BUCLE PRINCIPAL
+    // ============================================================
+    let u = 0;
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+
+      document.getElementById('boostBar').style.width = `${boostEnergy}%`;
+      document.getElementById('speedIndicator').textContent =
+        `Velocidad: ${Math.round(currentRailSpeed * 10)}`;
+
+      if (gameState === 'menu') {
+        renderer.render(scene, camera);
+        return;
+      }
+
+      if (gameState === 'exploding') {
+        explosionTime += delta;
+        updateExplosion(delta);
+        if (explosionTime >= CONFIG.explosionDuration) {
+          resetToMenu();
+        }
+        renderer.render(scene, camera);
+        return;
+      }
+
+      // ========== ESTADO: PLAYING ==========
+      // Turbo con V, freno con Espacio
+      const usingTurbo = (keys['v'] || keys['V']) && boostEnergy > 0 && energyStunTimer <= 0;
+      const braking = keys[' '] && boostEnergy > 0 && energyStunTimer <= 0;
+
+      if (usingTurbo) {
+        currentRailSpeed = CONFIG.baseRailSpeed * CONFIG.turboMultiplier;
+        boostEnergy = Math.max(0, boostEnergy - CONFIG.turboEnergyConsumption * delta);
+        if (boostEnergy === 0) energyStunTimer = CONFIG.energyStunTime;
+      } else if (braking) {
+        currentRailSpeed = CONFIG.baseRailSpeed * CONFIG.brakeMultiplier;
+        boostEnergy = Math.max(0, boostEnergy - CONFIG.brakeEnergyConsumption * delta);
+        if (boostEnergy === 0) energyStunTimer = CONFIG.energyStunTime;
+      } else {
+        currentRailSpeed = CONFIG.baseRailSpeed;
+      }
+
+      if (energyStunTimer > 0) {
+        energyStunTimer -= delta;
+      } else if (!usingTurbo && !braking && boostEnergy < CONFIG.boostMax) {
+        boostEnergy = Math.min(CONFIG.boostMax, boostEnergy + CONFIG.energyRegeneration * delta);
+      }
+
+      u += (currentRailSpeed * delta) / curveLength;
+      if (u > 1) u = 0;
+
+      const camPos = curve.getPointAt(u);
+      const tangent = curve.getTangentAt(u);
+      currentTangent.copy(tangent);
+      const right = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
+      const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
+
+      let dx = 0, dy = 0;
+      if (keys['ArrowLeft'] || keys['a']) dx -= 1;
+      if (keys['ArrowRight'] || keys['d']) dx += 1;
+      if (keys['ArrowUp'] || keys['w']) dy += 1;
+      if (keys['ArrowDown'] || keys['s']) dy -= 1;
+
+      offsetX += dx * CONFIG.playerMoveSpeed * delta;
+      offsetY += dy * CONFIG.playerMoveSpeed * delta;
+      offsetX = Math.max(-CONFIG.maxLateralOffset, Math.min(CONFIG.maxLateralOffset, offsetX));
+      offsetY = Math.max(-CONFIG.maxVerticalOffset, Math.min(CONFIG.maxVerticalOffset, offsetY));
+
+      player.position.copy(camPos)
+        .addScaledVector(tangent, CONFIG.forwardDistance)
+        .addScaledVector(right, offsetX)
+        .addScaledVector(up, offsetY);
+      player.lookAt(player.position.clone().add(tangent));
+
+      if (cameraMode === 'third') {
+        camera.position.copy(camPos);
+        camera.lookAt(camPos.clone().add(tangent));
+      } else {
+        camera.position.copy(player.position)
+          .addScaledVector(up, CONFIG.cockpitCameraOffsetUp)
+          .addScaledVector(tangent, CONFIG.cockpitCameraOffsetForward);
+        camera.lookAt(player.position.clone().addScaledVector(tangent, 10));
+      }
+
+      if (shootCooldown > 0) shootCooldown -= delta;
+      if (mouseDownLeft && shootCooldown <= 0) {
+        shootCooldown = CONFIG.shootCooldownTime;
+        raycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
+        const bulletDirection = raycaster.ray.direction.clone();
+        spawnBullet(bulletDirection);
+      }
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        bullet.mesh.position.addScaledVector(bullet.velocity, delta);
+        if (bullet.mesh.position.distanceTo(camera.position) > CONFIG.bulletMaxDistance) {
+          scene.remove(bullet.mesh);
+          bullets.splice(i, 1);
+        }
+      }
+
+      checkCollisions();
+      renderer.render(scene, camera);
+    }
+
+    // ============================================================
+    //  EVENTOS DE INTERFAZ
+    // ============================================================
+    document.getElementById('startButton').addEventListener('click', startGame);
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    animate();
+  </script>
+</body>
+</html>
